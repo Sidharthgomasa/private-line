@@ -4,6 +4,7 @@ from flask_socketio import SocketIO, emit, join_room
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default_secret')
+# Allow all origins to prevent CORS errors
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 PRIVATE_ROOM = "us_two_only"
@@ -22,14 +23,15 @@ def on_join(data):
     user_pin = data.get('pin')
     
     if user_pin == SECRET_PIN:
-        # 2. If PIN is 7652004, let them in
+        # 2. If PIN is correct, let them in
         join_room(PRIVATE_ROOM)
         print(f"User joined with correct PIN: {request.sid}")
         emit('ready', room=PRIVATE_ROOM, include_self=False)
     else:
-        # 3. If wrong, kick them out
+        # 3. If wrong, kick them out with the ROAST
         print(f"User tried to join with WRONG PIN: {user_pin}")
-        emit('auth_error', {'message': 'Wrong PIN! Access Denied.'}, to=request.sid)
+        # The Custom Message:
+        emit('auth_error', {'message': 'neku loverrr unda? mari enduku ra neeku 😂'}, to=request.sid)
 
 @socketio.on('signal')
 def on_signal(data):
