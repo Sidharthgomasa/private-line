@@ -6,13 +6,23 @@
     <title>Private Line</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #ffe6e6; margin: 0; }
+        h1 { color: #cc0000; margin-bottom: 20px; }
         
-        h1 { color: #cc0000; margin-bottom: 10px; }
-        
-        /* The Call Button */
+        /* New PIN Input Style */
+        #pinInput {
+            padding: 15px;
+            font-size: 20px;
+            border-radius: 10px;
+            border: 2px solid #ff4d4d;
+            text-align: center;
+            width: 150px;
+            margin-bottom: 15px;
+            outline: none;
+        }
+
         #callBtn {
-            padding: 20px 40px;
-            font-size: 24px;
+            padding: 15px 40px;
+            font-size: 22px;
             background-color: #ff4d4d;
             color: white;
             border: none;
@@ -23,18 +33,8 @@
         }
         #callBtn:active { transform: scale(0.95); }
         
-        /* Hidden by default, shows during call */
         .call-active { display: none; text-align: center; }
-        
-        .circle { 
-            width: 150px; height: 150px; 
-            background: #ffcccc; 
-            border-radius: 50%; 
-            display: flex; align-items: center; justify-content: center; 
-            margin: 20px auto; 
-            font-size: 50px;
-        }
-        
+        .circle { width: 150px; height: 150px; background: #ffcccc; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 20px auto; font-size: 50px; }
         .pulse { animation: pulse 2s infinite; }
         
         @keyframes pulse { 
@@ -42,20 +42,21 @@
             70% { transform: scale(1); box-shadow: 0 0 0 20px rgba(255, 77, 77, 0); } 
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0); } 
         }
-
         #status { font-style: italic; color: #555; margin-top: 20px; }
     </style>
 </head>
 <body>
 
-    <h1>❤️ Private Line</h1>
+    <h1>🔒 Secure Line</h1>
 
-    <button id="callBtn" onclick="startCall()">📞 Call Her</button>
+    <input type="tel" id="pinInput" placeholder="Enter PIN" maxlength="4">
+    
+    <button id="callBtn" onclick="startCall()">📞 Connect</button>
 
     <div id="ui-active" class="call-active">
-        <div id="visual" class="circle">Connecting...</div>
-        <div id="status">Connecting to secure room...</div>
-        <button onclick="location.reload()" style="padding: 10px 20px; margin-top: 20px; background: #555; color: white; border: none; border-radius: 20px; cursor: pointer;">Hang Up</button>
+        <div id="visual" class="circle">🔐</div>
+        <div id="status">Verifying PIN...</div>
+        <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #555; color: white; border: none; border-radius: 20px;">Hang Up</button>
     </div>
 
     <audio id="remoteAudio" autoplay></audio>
@@ -66,58 +67,64 @@
         const remoteAudio = document.getElementById('remoteAudio');
         const statusDiv = document.getElementById('status');
         const callBtn = document.getElementById('callBtn');
+        const pinInput = document.getElementById('pinInput');
         const uiActive = document.getElementById('ui-active');
         const visual = document.getElementById('visual');
         
         let peerConnection;
         const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-        // This function only runs when you CLICK the button
         function startCall() {
-            // Hide button, show loading UI
+            const pin = pinInput.value;
+            if (!pin) { alert("Please enter the PIN!"); return; }
+
+            // UI Changes
             callBtn.style.display = 'none';
+            pinInput.style.display = 'none';
             uiActive.style.display = 'block';
-            visual.innerText = "🎤";
 
             navigator.mediaDevices.getUserMedia({ audio: true, video: false })
                 .then(stream => {
-                    // Only NOW do we join the server
-                    socket.emit('join', {});
-                    statusDiv.innerText = "Mic active. Waiting for her to join...";
+                    // Send PIN to server for verification
+                    socket.emit('join', { pin: pin });
+                    statusDiv.innerText = "Verifying PIN...";
                     
                     peerConnection = new RTCPeerConnection(configuration);
                     stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
                     peerConnection.ontrack = event => {
                         remoteAudio.srcObject = event.streams[0];
-                        statusDiv.innerText = "❤️ She is here! Connected.";
+                        statusDiv.innerText = "❤️ Connected Securely!";
                         visual.innerText = "🗣️";
-                        visual.classList.add("pulse"); // Start pulsing animation
+                        visual.classList.add("pulse");
                     };
-
+                    
                     peerConnection.onicecandidate = event => {
                         if (event.candidate) socket.emit('signal', { 'candidate': event.candidate });
                     };
                 })
-                .catch(err => {
-                    statusDiv.innerText = "Error: Allow Microphone access!";
-                    console.error(err);
-                });
+                .catch(err => console.error(err));
         }
 
-        // --- Standard Signaling Logic (Same as before) ---
+        // --- Security Logic ---
         
+        // Server says: "WRONG PIN"
+        socket.on('auth_error', (data) => {
+            alert(data.message);
+            location.reload(); // Refresh page to try again
+        });
+
+        // Server says: "PIN Correct, you are in"
         socket.on('ready', async () => {
-            if (!peerConnection) return; // Don't react if I haven't clicked "Call" yet
-            console.log("Partner is ready...");
+            if (!peerConnection) return;
+            console.log("PIN Accepted. Partner ready.");
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             socket.emit('signal', { 'sdp': offer });
         });
 
         socket.on('signal', async (data) => {
-            if (!peerConnection) return; // Don't react if I haven't clicked "Call" yet
-
+            if (!peerConnection) return;
             if (data.sdp) {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
                 if (data.sdp.type === 'offer') {
