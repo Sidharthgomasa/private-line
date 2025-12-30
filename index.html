@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Line</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #ffe6e6; margin: 0; }
+        
+        h1 { color: #cc0000; margin-bottom: 10px; }
+        
+        /* The Call Button */
+        #callBtn {
+            padding: 20px 40px;
+            font-size: 24px;
+            background-color: #ff4d4d;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 77, 77, 0.4);
+            transition: transform 0.2s;
+        }
+        #callBtn:active { transform: scale(0.95); }
+        
+        /* Hidden by default, shows during call */
+        .call-active { display: none; text-align: center; }
+        
+        .circle { 
+            width: 150px; height: 150px; 
+            background: #ffcccc; 
+            border-radius: 50%; 
+            display: flex; align-items: center; justify-content: center; 
+            margin: 20px auto; 
+            font-size: 50px;
+        }
+        
+        .pulse { animation: pulse 2s infinite; }
+        
+        @keyframes pulse { 
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7); } 
+            70% { transform: scale(1); box-shadow: 0 0 0 20px rgba(255, 77, 77, 0); } 
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0); } 
+        }
+
+        #status { font-style: italic; color: #555; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <h1>❤️ Private Line</h1>
+
+    <button id="callBtn" onclick="startCall()">📞 Call Her</button>
+
+    <div id="ui-active" class="call-active">
+        <div id="visual" class="circle">Connecting...</div>
+        <div id="status">Connecting to secure room...</div>
+        <button onclick="location.reload()" style="padding: 10px 20px; margin-top: 20px; background: #555; color: white; border: none; border-radius: 20px; cursor: pointer;">Hang Up</button>
+    </div>
+
+    <audio id="remoteAudio" autoplay></audio>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const remoteAudio = document.getElementById('remoteAudio');
+        const statusDiv = document.getElementById('status');
+        const callBtn = document.getElementById('callBtn');
+        const uiActive = document.getElementById('ui-active');
+        const visual = document.getElementById('visual');
+        
+        let peerConnection;
+        const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+        // This function only runs when you CLICK the button
+        function startCall() {
+            // Hide button, show loading UI
+            callBtn.style.display = 'none';
+            uiActive.style.display = 'block';
+            visual.innerText = "🎤";
+
+            navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                .then(stream => {
+                    // Only NOW do we join the server
+                    socket.emit('join', {});
+                    statusDiv.innerText = "Mic active. Waiting for her to join...";
+                    
+                    peerConnection = new RTCPeerConnection(configuration);
+                    stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+                    peerConnection.ontrack = event => {
+                        remoteAudio.srcObject = event.streams[0];
+                        statusDiv.innerText = "❤️ She is here! Connected.";
+                        visual.innerText = "🗣️";
+                        visual.classList.add("pulse"); // Start pulsing animation
+                    };
+
+                    peerConnection.onicecandidate = event => {
+                        if (event.candidate) socket.emit('signal', { 'candidate': event.candidate });
+                    };
+                })
+                .catch(err => {
+                    statusDiv.innerText = "Error: Allow Microphone access!";
+                    console.error(err);
+                });
+        }
+
+        // --- Standard Signaling Logic (Same as before) ---
+        
+        socket.on('ready', async () => {
+            if (!peerConnection) return; // Don't react if I haven't clicked "Call" yet
+            console.log("Partner is ready...");
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('signal', { 'sdp': offer });
+        });
+
+        socket.on('signal', async (data) => {
+            if (!peerConnection) return; // Don't react if I haven't clicked "Call" yet
+
+            if (data.sdp) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                if (data.sdp.type === 'offer') {
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    socket.emit('signal', { 'sdp': answer });
+                }
+            } else if (data.candidate) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        });
+    </script>
+</body>
+</html>
