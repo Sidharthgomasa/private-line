@@ -68,7 +68,7 @@
             <h1>🔒 PRIVATE LINE</h1>
             <input type="tel" id="pinInput" placeholder="Enter PIN" maxlength="10">
             <br>
-            <button id="callBtn" class="btn" onclick="startCall(false)">📞 Voice Call</button>
+            <button id="callBtn" class="btn" onclick="startCall(false)">📞 Voice Call (Earpiece)</button>
             <br>
             <button id="videoStartBtn" class="btn" onclick="startCall(true)">📹 Video Call</button>
         </div>
@@ -76,7 +76,6 @@
         <div id="inCallControls">
             <div id="visual" class="circle">🚀</div>
             <div id="status" style="margin-bottom: 20px; color: #aaa;">Connecting...</div>
-            
             <button id="endBtn" class="btn" onclick="location.reload()">📞</button>
         </div>
     </div>
@@ -121,55 +120,59 @@
             if (!pin) { alert("Enter PIN!"); return; }
 
             isVideoCall = videoMode;
-
-            // UI Switch
             uiSetup.style.display = 'none';
             uiInCall.style.display = 'block';
             statusDiv.innerText = videoMode ? "Starting Camera..." : "Accessing Mic...";
 
             try {
-                // 1. Get Media based on mode
+                // 1. ADVANCED CONSTRAINTS (The Trick)
+                // We ask for Echo Cancellation and Noise Suppression.
+                // This hints the browser to use "Communication Mode" (Earpiece) instead of "Media Mode" (Speaker).
                 const constraints = {
-                    audio: true,
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
                     video: videoMode ? { facingMode: 'user' } : false
                 };
                 
                 localStream = await navigator.mediaDevices.getUserMedia(constraints);
                 
-                // If video, show self immediately
+                // If video, show self
                 if (videoMode) {
                     localVideo.srcObject = localStream;
                     localVideo.style.display = 'block';
                 }
 
-                // 2. Join Room
                 socket.emit('join', { pin: pin });
                 statusDiv.innerText = "Waiting for partner...";
 
-                // 3. Setup Connection
                 peerConnection = new RTCPeerConnection({ iceServers: iceServers });
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-                // 4. Handle Incoming Stream
+                // 2. FORCE AUDIO ROUTING
                 peerConnection.ontrack = event => {
                     if (event.track.kind === 'video') {
-                        // VIDEO RECEIVED
                         remoteVideo.srcObject = event.streams[0];
                         remoteVideo.style.display = 'block';
-                        
-                        // Force Play (Crucial fix for black screen)
-                        remoteVideo.play().catch(e => console.log("Video Auto-play block:", e));
-                        
-                        visual.style.display = 'none'; // Hide icon
+                        remoteVideo.play().catch(e => console.log("Video Play Error:", e));
+                        visual.style.display = 'none';
                         statusDiv.innerText = ""; 
                     } else {
-                        // AUDIO RECEIVED
+                        // AUDIO HANDLING
                         if (isVideoCall) {
-                            // If in video mode, audio might come attached to video stream
-                            // but we ensure it plays via the video element usually.
+                            // Video Call -> Loudspeaker is fine.
                         } else {
+                            // Voice Call -> Try to force Earpiece logic
                             remoteAudio.srcObject = event.streams[0];
-                            remoteAudio.play().catch(e => console.log("Audio Auto-play block:", e));
+                            
+                            // TRICK: Stop and Play to reset audio routing
+                            remoteAudio.pause();
+                            setTimeout(() => {
+                                remoteAudio.play().catch(e => console.log("Audio Play Error:", e));
+                            }, 500);
+
                             statusDiv.innerText = "❤️ Connected (Voice)";
                             visual.innerText = "🗣️";
                             visual.classList.add("pulse");
