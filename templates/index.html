@@ -38,19 +38,18 @@
 
         /* BUTTONS */
         .btn {
-            padding: 15px 40px; font-size: 18px; border: none; border-radius: 50px;
+            padding: 15px 30px; font-size: 18px; border: none; border-radius: 50px;
             cursor: pointer; font-weight: bold; margin: 10px; color: white;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: transform 0.1s;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: transform 0.1s; width: 80%; max-width: 300px;
         }
         .btn:active { transform: scale(0.95); }
         
         #callBtn { background: linear-gradient(145deg, #ff4d4d, #cc0000); }
+        #videoStartBtn { background: linear-gradient(145deg, #444, #222); border: 1px solid #555; }
         
         /* HIDDEN BUTTONS (Show during call) */
         #inCallControls { display: none; }
-        
-        #videoBtn { background: #444; border: 1px solid #666; }
-        #endBtn { background: #cc0000; }
+        #endBtn { background: #cc0000; width: 60px; height: 60px; font-size: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 
         /* STATUS CIRCLE */
         .circle { width: 120px; height: 120px; background: #2a2a2a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 20px auto; font-size: 40px; border: 2px solid #ff4d4d; }
@@ -69,15 +68,16 @@
             <h1>🔒 PRIVATE LINE</h1>
             <input type="tel" id="pinInput" placeholder="Enter PIN" maxlength="10">
             <br>
-            <button id="callBtn" class="btn" onclick="startCall()">📞 Voice Call</button>
+            <button id="callBtn" class="btn" onclick="startCall(false)">📞 Voice Call</button>
+            <br>
+            <button id="videoStartBtn" class="btn" onclick="startCall(true)">📹 Video Call</button>
         </div>
 
         <div id="inCallControls">
             <div id="visual" class="circle">🚀</div>
             <div id="status" style="margin-bottom: 20px; color: #aaa;">Connecting...</div>
-            <button id="videoBtn" class="btn" onclick="requestVideoUpgrade()">📹 Switch to Video</button>
-            <br>
-            <button id="endBtn" class="btn" onclick="location.reload()">End Call</button>
+            
+            <button id="endBtn" class="btn" onclick="location.reload()">📞</button>
         </div>
     </div>
 
@@ -96,14 +96,13 @@
         const uiInCall = document.getElementById('inCallControls');
         const statusDiv = document.getElementById('status');
         const visual = document.getElementById('visual');
-        const videoBtn = document.getElementById('videoBtn');
         const remoteAudio = document.getElementById('remoteAudio');
         const remoteVideo = document.getElementById('remoteVideo');
         const localVideo = document.getElementById('localVideo');
         
         let peerConnection;
         let localStream;
-        let isVideoEnabled = false;
+        let isVideoCall = false;
 
         const METERED_API_KEY = "d79e5424a466fa259d9deecb140f92c064dd";
         let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -116,34 +115,65 @@
             } catch (e) { console.error("Backup servers used"); }
         };
 
-        async function startCall() {
+        // Unified Start Function
+        async function startCall(videoMode) {
             const pin = document.getElementById('pinInput').value;
             if (!pin) { alert("Enter PIN!"); return; }
 
+            isVideoCall = videoMode;
+
+            // UI Switch
             uiSetup.style.display = 'none';
             uiInCall.style.display = 'block';
-            statusDiv.innerText = "Accessing Mic...";
+            statusDiv.innerText = videoMode ? "Starting Camera..." : "Accessing Mic...";
 
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                // 1. Get Media based on mode
+                const constraints = {
+                    audio: true,
+                    video: videoMode ? { facingMode: 'user' } : false
+                };
+                
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                // If video, show self immediately
+                if (videoMode) {
+                    localVideo.srcObject = localStream;
+                    localVideo.style.display = 'block';
+                }
+
+                // 2. Join Room
                 socket.emit('join', { pin: pin });
                 statusDiv.innerText = "Waiting for partner...";
 
+                // 3. Setup Connection
                 peerConnection = new RTCPeerConnection({ iceServers: iceServers });
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
+                // 4. Handle Incoming Stream
                 peerConnection.ontrack = event => {
                     if (event.track.kind === 'video') {
+                        // VIDEO RECEIVED
                         remoteVideo.srcObject = event.streams[0];
                         remoteVideo.style.display = 'block';
-                        localVideo.style.display = 'block';
-                        visual.style.display = 'none';
-                        statusDiv.innerText = "";
+                        
+                        // Force Play (Crucial fix for black screen)
+                        remoteVideo.play().catch(e => console.log("Video Auto-play block:", e));
+                        
+                        visual.style.display = 'none'; // Hide icon
+                        statusDiv.innerText = ""; 
                     } else {
-                        remoteAudio.srcObject = event.streams[0];
-                        statusDiv.innerText = "❤️ Connected (Audio)";
-                        visual.innerText = "🗣️";
-                        visual.classList.add("pulse");
+                        // AUDIO RECEIVED
+                        if (isVideoCall) {
+                            // If in video mode, audio might come attached to video stream
+                            // but we ensure it plays via the video element usually.
+                        } else {
+                            remoteAudio.srcObject = event.streams[0];
+                            remoteAudio.play().catch(e => console.log("Audio Auto-play block:", e));
+                            statusDiv.innerText = "❤️ Connected (Voice)";
+                            visual.innerText = "🗣️";
+                            visual.classList.add("pulse");
+                        }
                     }
                 };
 
@@ -151,52 +181,23 @@
                     if (event.candidate) socket.emit('signal', { 'candidate': event.candidate });
                 };
 
-            } catch (err) { alert("Mic Error: " + err); location.reload(); }
+            } catch (err) { 
+                alert("Error: " + err); 
+                location.reload(); 
+            }
         }
 
-        function requestVideoUpgrade() {
-            if (isVideoEnabled) return;
-            statusDiv.innerText = "Requesting Video...";
-            socket.emit('signal', { type: 'request_video' });
-        }
-
-        async function enableVideoMode() {
-            try {
-                const videoStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'user' } });
-                localVideo.srcObject = videoStream;
-                localVideo.style.display = 'block';
-                const videoTrack = videoStream.getVideoTracks()[0];
-                const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
-                if (sender) sender.replaceTrack(videoTrack);
-                else peerConnection.addTrack(videoTrack, videoStream);
-                
-                isVideoEnabled = true;
-                videoBtn.style.display = 'none';
-                visual.style.display = 'none';
-                statusDiv.innerText = "Video Active";
-                
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                socket.emit('signal', { 'sdp': offer });
-            } catch (e) { alert("Camera Error: " + e); }
-        }
-
+        // --- Socket Logic ---
         socket.on('auth_error', (data) => { alert(data.message); location.reload(); });
+        
         socket.on('ready', async () => {
             if (!peerConnection) return;
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             socket.emit('signal', { 'sdp': offer });
         });
+
         socket.on('signal', async (data) => {
-            if (data.type === 'request_video') {
-                const accept = confirm("Partner wants to switch to Video Call. Accept?");
-                if (accept) { await enableVideoMode(); socket.emit('signal', { type: 'accept_video' }); }
-                return;
-            }
-            if (data.type === 'accept_video') {
-                statusDiv.innerText = "Request Accepted!"; await enableVideoMode(); return;
-            }
             if (!peerConnection) return;
             if (data.sdp) {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
