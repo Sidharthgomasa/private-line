@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Secure Line</title>
+    <meta name="theme-color" content="#121212">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2913/2913133.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     <style>
         body { margin: 0; background: #121212; overflow: hidden; font-family: 'Segoe UI', sans-serif; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
 
@@ -69,7 +75,6 @@
         <div id="inCallControls">
             <div id="visual" class="circle">🚀</div>
             <div id="status" style="margin-bottom: 20px; color: #aaa;">Connecting...</div>
-            
             <button id="videoBtn" class="btn" onclick="requestVideoUpgrade()">📹 Switch to Video</button>
             <br>
             <button id="endBtn" class="btn" onclick="location.reload()">End Call</button>
@@ -80,14 +85,18 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script>
+        // --- PWA INSTALLATION ---
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js');
+        }
+
+        // --- APP LOGIC ---
         const socket = io();
         const uiSetup = document.getElementById('setup-ui');
         const uiInCall = document.getElementById('inCallControls');
         const statusDiv = document.getElementById('status');
         const visual = document.getElementById('visual');
         const videoBtn = document.getElementById('videoBtn');
-        
-        // Media Elements
         const remoteAudio = document.getElementById('remoteAudio');
         const remoteVideo = document.getElementById('remoteVideo');
         const localVideo = document.getElementById('localVideo');
@@ -96,11 +105,9 @@
         let localStream;
         let isVideoEnabled = false;
 
-        // METERED API KEY (Your Key)
         const METERED_API_KEY = "d79e5424a466fa259d9deecb140f92c064dd";
         let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
 
-        // 1. Fetch Servers on Load
         window.onload = async () => {
             try {
                 const response = await fetch(`https://connect-v.metered.live/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`);
@@ -109,7 +116,6 @@
             } catch (e) { console.error("Backup servers used"); }
         };
 
-        // 2. Start Audio Call
         async function startCall() {
             const pin = document.getElementById('pinInput').value;
             if (!pin) { alert("Enter PIN!"); return; }
@@ -119,28 +125,21 @@
             statusDiv.innerText = "Accessing Mic...";
 
             try {
-                // Start with AUDIO ONLY
                 localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                
                 socket.emit('join', { pin: pin });
                 statusDiv.innerText = "Waiting for partner...";
 
                 peerConnection = new RTCPeerConnection({ iceServers: iceServers });
-                
-                // Add Audio Tracks
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-                // Handle Incoming Stream
                 peerConnection.ontrack = event => {
                     if (event.track.kind === 'video') {
-                        // Video Track Received
                         remoteVideo.srcObject = event.streams[0];
                         remoteVideo.style.display = 'block';
                         localVideo.style.display = 'block';
-                        visual.style.display = 'none'; // Hide the circle icon
-                        statusDiv.innerText = ""; // Clear text for clean video
+                        visual.style.display = 'none';
+                        statusDiv.innerText = "";
                     } else {
-                        // Audio Track Received
                         remoteAudio.srcObject = event.streams[0];
                         statusDiv.innerText = "❤️ Connected (Audio)";
                         visual.innerText = "🗣️";
@@ -152,88 +151,52 @@
                     if (event.candidate) socket.emit('signal', { 'candidate': event.candidate });
                 };
 
-            } catch (err) {
-                alert("Mic Error: " + err); location.reload();
-            }
+            } catch (err) { alert("Mic Error: " + err); location.reload(); }
         }
 
-        // 3. Request Video Upgrade
         function requestVideoUpgrade() {
-            if (isVideoEnabled) return; // Already on
+            if (isVideoEnabled) return;
             statusDiv.innerText = "Requesting Video...";
-            // Send special signal to partner
             socket.emit('signal', { type: 'request_video' });
         }
 
-        // 4. Enable Video (Hardware)
         async function enableVideoMode() {
             try {
-                // Get Video Stream
                 const videoStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'user' } });
-                
-                // Show Local Video
                 localVideo.srcObject = videoStream;
                 localVideo.style.display = 'block';
-                
-                // Add Video Track to Connection
                 const videoTrack = videoStream.getVideoTracks()[0];
                 const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+                if (sender) sender.replaceTrack(videoTrack);
+                else peerConnection.addTrack(videoTrack, videoStream);
                 
-                if (sender) {
-                    sender.replaceTrack(videoTrack);
-                } else {
-                    peerConnection.addTrack(videoTrack, videoStream);
-                }
-
-                // Update UI
                 isVideoEnabled = true;
-                videoBtn.style.display = 'none'; // Hide button
+                videoBtn.style.display = 'none';
                 visual.style.display = 'none';
                 statusDiv.innerText = "Video Active";
                 
-                // Re-negotiate (Tell partner I added video)
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
                 socket.emit('signal', { 'sdp': offer });
-
-            } catch (e) {
-                alert("Camera Error: " + e);
-            }
+            } catch (e) { alert("Camera Error: " + e); }
         }
 
-        // --- Socket Logic ---
-
         socket.on('auth_error', (data) => { alert(data.message); location.reload(); });
-
         socket.on('ready', async () => {
             if (!peerConnection) return;
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             socket.emit('signal', { 'sdp': offer });
         });
-
         socket.on('signal', async (data) => {
-            // Handle "Request Video" Custom Signal
             if (data.type === 'request_video') {
                 const accept = confirm("Partner wants to switch to Video Call. Accept?");
-                if (accept) {
-                    // I accept -> Turn on MY video
-                    await enableVideoMode();
-                    // Tell partner I accepted
-                    socket.emit('signal', { type: 'accept_video' });
-                }
+                if (accept) { await enableVideoMode(); socket.emit('signal', { type: 'accept_video' }); }
                 return;
             }
-
-            // Handle "Accept Video" Custom Signal
             if (data.type === 'accept_video') {
-                statusDiv.innerText = "Request Accepted!";
-                // Partner accepted -> Turn on MY video too
-                await enableVideoMode();
-                return;
+                statusDiv.innerText = "Request Accepted!"; await enableVideoMode(); return;
             }
-
-            // Standard WebRTC Signaling
             if (!peerConnection) return;
             if (data.sdp) {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
