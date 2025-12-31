@@ -5,64 +5,75 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Line</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #121212; color: white; margin: 0; }
-        
-        h1 { color: #ff4d4d; margin-bottom: 20px; font-weight: 300; letter-spacing: 2px; }
-        
-        #pinInput {
-            padding: 15px;
-            font-size: 20px;
-            border-radius: 12px;
-            border: 2px solid #333;
-            background: #222;
-            color: white;
-            text-align: center;
-            width: 200px;
-            margin-bottom: 25px;
-            outline: none;
-            transition: border 0.3s;
-        }
-        #pinInput:focus { border-color: #ff4d4d; }
+        body { margin: 0; background: #121212; overflow: hidden; font-family: 'Segoe UI', sans-serif; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
 
-        /* The Main Call Button */
-        #callBtn {
-            padding: 18px 50px;
-            font-size: 22px;
-            background: linear-gradient(145deg, #ff4d4d, #cc0000);
-            color: white;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(255, 77, 77, 0.4);
-            font-weight: bold;
-            transition: transform 0.1s;
+        /* VIDEO CONTAINERS */
+        #remoteVideo {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; z-index: 1; display: none; background: #000;
         }
-        #callBtn:active { transform: scale(0.96); }
+        #localVideo {
+            position: absolute; bottom: 20px; right: 20px; width: 100px; height: 140px;
+            background: #333; border: 2px solid #ff4d4d; border-radius: 10px;
+            object-fit: cover; z-index: 2; transform: scaleX(-1); display: none;
+        }
+
+        /* UI LAYOUT */
+        #ui-layer { position: relative; z-index: 10; text-align: center; width: 100%; }
         
-        .call-active { display: none; text-align: center; }
-        .circle { width: 140px; height: 140px; background: #2a2a2a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 30px auto; font-size: 50px; border: 2px solid #ff4d4d; }
+        h1 { color: #ff4d4d; font-weight: 300; letter-spacing: 2px; }
+
+        /* INPUTS */
+        #pinInput {
+            padding: 15px; font-size: 20px; border-radius: 12px;
+            border: 2px solid #333; background: #222; color: white;
+            text-align: center; width: 200px; margin-bottom: 25px; outline: none;
+        }
+
+        /* BUTTONS */
+        .btn {
+            padding: 15px 40px; font-size: 18px; border: none; border-radius: 50px;
+            cursor: pointer; font-weight: bold; margin: 10px; color: white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
+        
+        #callBtn { background: linear-gradient(145deg, #ff4d4d, #cc0000); }
+        
+        /* HIDDEN BUTTONS (Show during call) */
+        #inCallControls { display: none; }
+        
+        #videoBtn { background: #444; border: 1px solid #666; }
+        #endBtn { background: #cc0000; }
+
+        /* STATUS CIRCLE */
+        .circle { width: 120px; height: 120px; background: #2a2a2a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 20px auto; font-size: 40px; border: 2px solid #ff4d4d; }
         .pulse { animation: pulse 1.5s infinite; background: #ff4d4d; border: none; }
-        
-        @keyframes pulse { 
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7); } 
-            70% { transform: scale(1.1); box-shadow: 0 0 0 25px rgba(255, 77, 77, 0); } 
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0); } 
-        }
-        #status { color: #888; margin-top: 15px; font-size: 14px; }
+        @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7); } 70% { transform: scale(1.1); box-shadow: 0 0 0 20px rgba(255, 77, 77, 0); } 100% { transform: scale(0.95); } }
+
     </style>
 </head>
 <body>
 
-    <h1>🔒 PRIVATE LINE</h1>
+    <video id="remoteVideo" autoplay playsinline></video>
+    <video id="localVideo" autoplay playsinline muted></video>
 
-    <input type="tel" id="pinInput" placeholder="Enter Secret PIN" maxlength="10">
-    <button id="callBtn" onclick="startCall()">📞 Call Her</button>
+    <div id="ui-layer">
+        <div id="setup-ui">
+            <h1>🔒 PRIVATE LINE</h1>
+            <input type="tel" id="pinInput" placeholder="Enter PIN" maxlength="10">
+            <br>
+            <button id="callBtn" class="btn" onclick="startCall()">📞 Voice Call</button>
+        </div>
 
-    <div id="ui-active" class="call-active">
-        <div id="visual" class="circle">🚀</div>
-        <div id="status">Initializing secure route...</div>
-        
-        <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 25px; background: #333; color: white; border: none; border-radius: 20px;">End Call</button>
+        <div id="inCallControls">
+            <div id="visual" class="circle">🚀</div>
+            <div id="status" style="margin-bottom: 20px; color: #aaa;">Connecting...</div>
+            
+            <button id="videoBtn" class="btn" onclick="requestVideoUpgrade()">📹 Switch to Video</button>
+            <br>
+            <button id="endBtn" class="btn" onclick="location.reload()">End Call</button>
+        </div>
     </div>
 
     <audio id="remoteAudio" autoplay playsinline></audio>
@@ -70,74 +81,128 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script>
         const socket = io();
-        const remoteAudio = document.getElementById('remoteAudio');
+        const uiSetup = document.getElementById('setup-ui');
+        const uiInCall = document.getElementById('inCallControls');
         const statusDiv = document.getElementById('status');
-        const callBtn = document.getElementById('callBtn');
-        const pinInput = document.getElementById('pinInput');
-        const uiActive = document.getElementById('ui-active');
         const visual = document.getElementById('visual');
+        const videoBtn = document.getElementById('videoBtn');
+        
+        // Media Elements
+        const remoteAudio = document.getElementById('remoteAudio');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const localVideo = document.getElementById('localVideo');
         
         let peerConnection;
+        let localStream;
+        let isVideoEnabled = false;
 
-        // Default Backup Server
-        let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+        // METERED API KEY (Your Key)
         const METERED_API_KEY = "d79e5424a466fa259d9deecb140f92c064dd";
-        
-        // Fetch credentials immediately on load
+        let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+        // 1. Fetch Servers on Load
         window.onload = async () => {
             try {
                 const response = await fetch(`https://connect-v.metered.live/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`);
-                const data = await response.json();
-                iceServers = data; 
-                console.log("Premium Servers Loaded!");
-            } catch (e) {
-                console.error("Using backup servers.");
-            }
+                iceServers = await response.json();
+                console.log("Premium Servers Loaded");
+            } catch (e) { console.error("Backup servers used"); }
         };
 
+        // 2. Start Audio Call
         async function startCall() {
-            const pin = pinInput.value;
-            if (!pin) { alert("Enter the PIN first!"); return; }
+            const pin = document.getElementById('pinInput').value;
+            if (!pin) { alert("Enter PIN!"); return; }
 
-            // UI Updates
-            callBtn.style.display = 'none';
-            pinInput.style.display = 'none';
-            uiActive.style.display = 'block';
-            statusDiv.innerText = "Accessing Microphone...";
+            uiSetup.style.display = 'none';
+            uiInCall.style.display = 'block';
+            statusDiv.innerText = "Accessing Mic...";
 
             try {
-                // Get Microphone
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                // Start with AUDIO ONLY
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                 
                 socket.emit('join', { pin: pin });
                 statusDiv.innerText = "Waiting for partner...";
-                
-                // Create Connection
-                peerConnection = new RTCPeerConnection({ iceServers: iceServers });
-                stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
-                // When audio arrives
-                peerConnection.ontrack = event => {
-                    remoteAudio.srcObject = event.streams[0];
-                    statusDiv.innerText = "❤️ Connected! (Use Headphones for Privacy)";
-                    visual.innerText = "🗣️";
-                    visual.classList.add("pulse");
-                    
-                    // Force Audio Play
-                    remoteAudio.play().catch(e => console.log("Audio play error:", e));
-                };
+                peerConnection = new RTCPeerConnection({ iceServers: iceServers });
                 
+                // Add Audio Tracks
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                // Handle Incoming Stream
+                peerConnection.ontrack = event => {
+                    if (event.track.kind === 'video') {
+                        // Video Track Received
+                        remoteVideo.srcObject = event.streams[0];
+                        remoteVideo.style.display = 'block';
+                        localVideo.style.display = 'block';
+                        visual.style.display = 'none'; // Hide the circle icon
+                        statusDiv.innerText = ""; // Clear text for clean video
+                    } else {
+                        // Audio Track Received
+                        remoteAudio.srcObject = event.streams[0];
+                        statusDiv.innerText = "❤️ Connected (Audio)";
+                        visual.innerText = "🗣️";
+                        visual.classList.add("pulse");
+                    }
+                };
+
                 peerConnection.onicecandidate = event => {
                     if (event.candidate) socket.emit('signal', { 'candidate': event.candidate });
                 };
 
             } catch (err) {
-                alert("Could not start call. Check Microphone permissions.");
-                location.reload();
+                alert("Mic Error: " + err); location.reload();
+            }
+        }
+
+        // 3. Request Video Upgrade
+        function requestVideoUpgrade() {
+            if (isVideoEnabled) return; // Already on
+            statusDiv.innerText = "Requesting Video...";
+            // Send special signal to partner
+            socket.emit('signal', { type: 'request_video' });
+        }
+
+        // 4. Enable Video (Hardware)
+        async function enableVideoMode() {
+            try {
+                // Get Video Stream
+                const videoStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'user' } });
+                
+                // Show Local Video
+                localVideo.srcObject = videoStream;
+                localVideo.style.display = 'block';
+                
+                // Add Video Track to Connection
+                const videoTrack = videoStream.getVideoTracks()[0];
+                const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+                
+                if (sender) {
+                    sender.replaceTrack(videoTrack);
+                } else {
+                    peerConnection.addTrack(videoTrack, videoStream);
+                }
+
+                // Update UI
+                isVideoEnabled = true;
+                videoBtn.style.display = 'none'; // Hide button
+                visual.style.display = 'none';
+                statusDiv.innerText = "Video Active";
+                
+                // Re-negotiate (Tell partner I added video)
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('signal', { 'sdp': offer });
+
+            } catch (e) {
+                alert("Camera Error: " + e);
             }
         }
 
         // --- Socket Logic ---
+
         socket.on('auth_error', (data) => { alert(data.message); location.reload(); });
 
         socket.on('ready', async () => {
@@ -148,6 +213,27 @@
         });
 
         socket.on('signal', async (data) => {
+            // Handle "Request Video" Custom Signal
+            if (data.type === 'request_video') {
+                const accept = confirm("Partner wants to switch to Video Call. Accept?");
+                if (accept) {
+                    // I accept -> Turn on MY video
+                    await enableVideoMode();
+                    // Tell partner I accepted
+                    socket.emit('signal', { type: 'accept_video' });
+                }
+                return;
+            }
+
+            // Handle "Accept Video" Custom Signal
+            if (data.type === 'accept_video') {
+                statusDiv.innerText = "Request Accepted!";
+                // Partner accepted -> Turn on MY video too
+                await enableVideoMode();
+                return;
+            }
+
+            // Standard WebRTC Signaling
             if (!peerConnection) return;
             if (data.sdp) {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
